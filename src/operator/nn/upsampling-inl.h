@@ -91,8 +91,8 @@ void UpSamplingForward(const OpContext &ctx, const UpSamplingParam &param,
                        const std::vector<TBlob> &out_data) {
   using namespace mshadow;
   using namespace mshadow::expr;
-  CHECK_EQ(in_data.size(), static_cast<size_t>(param.num_args));
-  CHECK_EQ(out_data.size(), 1U);
+  // CHECK_EQ(in_data.size(), static_cast<size_t>(param.num_args));
+  // CHECK_EQ(out_data.size(), 1U);
   if (req[up_enum::kOut] == kNullOp) {
     return;
   }

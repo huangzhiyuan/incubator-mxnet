@@ -513,11 +513,7 @@ def quantize_model(sym, arg_params, aux_params,
                              ' while received type %s' % (calib_mode, str(type(calib_data))))
 
         mod = Module(symbol=sym, data_names=data_names, label_names=label_names, context=ctx)
-        if len(calib_data.provide_label) > 0:
-            mod.bind(for_training=False, data_shapes=calib_data.provide_data,
-                     label_shapes=calib_data.provide_label)
-        else:
-            mod.bind(for_training=False, data_shapes=calib_data.provide_data)
+        mod.bind(for_training=False, data_shapes=calib_data.provide_data)
         mod.set_params(arg_params, aux_params)
         if calib_mode == 'entropy':
             nd_dict, num_examples = _collect_layer_outputs(mod, calib_data,
