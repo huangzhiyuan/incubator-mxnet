@@ -104,13 +104,17 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
                        &attr](const mkldnn::convolution_forward::desc &desc) {
     auto engine = CpuEngine::Get()->get_engine();
     try {
-      auto conv_pd = mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
+      auto conv_pd = mkldnn::convolution_forward::primitive_desc(desc, attr,
+      engine);
       while (conv_pd.dst_primitive_desc().get_size() != GetArraySize(output) ||
              conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
              (!param.mkldnn_param.quantized &&
-              conv_pd.weights_primitive_desc().get_size() != GetArraySize(weights))) {
-        // next_impl() will visit desc and engine, please make sure they are still alive here.
-        CHECK(conv_pd.next_impl()) << "No convolution implementation for this request.";
+              conv_pd.weights_primitive_desc().get_size() !=
+                  GetArraySize(weights))) {
+        // next_impl() will visit desc and engine, please make sure they are
+        // still alive here.
+        CHECK(conv_pd.next_impl())
+            << "No convolution implementation for this request.";
       }
       return conv_pd;
     } catch (mkldnn::error &e) {
@@ -151,10 +155,22 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
                                              mkldnn::padding_kind::zero);
       return GetConvFwdPd(desc);
     } else {
-      mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct, data_md,
-                                             weight_md, *bias_md_ptr, out_md, strides, dilates,
-                                             padding, padding, mkldnn::padding_kind::zero);
-      return GetConvFwdPd(desc);
+      // first conv in OCR and oc=2 will not enter winograd for best performance
+      if (param.conv_param.kernel[0] == 3 && data.shape()[2] != 1024 && param.conv_param.num_filter % 16 == 0) {
+        prop = mkldnn::prop_kind::forward;
+        mkldnn::convolution_forward::desc desc(
+            prop, mkldnn::algorithm::convolution_winograd, data_md, weight_md,
+            *bias_md_ptr, out_md, strides, dilates, padding, padding,
+            mkldnn::padding_kind::zero);
+        return GetConvFwdPd(desc);
+      } else {
+        mkldnn::convolution_forward::desc desc(
+            prop, mkldnn::algorithm::convolution_direct, data_md, weight_md,
+            *bias_md_ptr, out_md, strides, dilates, padding, padding,
+            mkldnn::padding_kind::zero);
+        return GetConvFwdPd(desc);
+      }
+      // return GetConvFwdPd(desc);
     }
   }
 }
@@ -384,7 +400,6 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
                                          const std::vector<OpReqType> &req,
                                          const std::vector<NDArray> &out_data) {
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
-
   auto data = in_data[conv::kData];
   if (data.IsView() && data.IsMKLDNNData())
     data = data.Reorder2Default();
@@ -395,9 +410,42 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
 
   bool no_bias = param.conv_param.no_bias && !param.mkldnn_param.with_bn;
 
-  auto data_mem = data.GetMKLDNNDataReorder(
-      fwd->fwd_pd.src_primitive_desc());
+  const mkldnn::memory *data_mem;
+  auto data_tmp = mkldnn::memory(fwd->fwd_pd.src_primitive_desc());
+  if (fwd->fwd_pd.src_primitive_desc().get_size() == GetArraySize(data)) {
+    data_mem = data.GetMKLDNNDataReorder(fwd->fwd_pd.src_primitive_desc());
+  } else {
+    data_mem = data.GetMKLDNNData();
+    MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*data_mem, data_tmp));
+  }
+
+  // const mkldnn::memory *weight_mem;
+  // if (ctx.is_train) {
+  //   // TODO(zhengda) kvstore doesn't handle MKLDNN correctly. Let's reorder it
+  //   // to the default format for now.
+  //   if (weight.IsMKLDNNData())
+  //     // This asks the engine to change the layout of the weight array after
+  //     // it's used.
+  //     weight.Reorder2DefaultAsync();
+  //   weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
+  //                           param.conv_param.num_group);
+  // } else {
+  //   // For inference, we want to reorder the weight array so we don't need to
+  //   // reorder data every time.
+  //   if (weight.IsDefaultData()) {
+  //     weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
+  //                             param.conv_param.num_group);
+  //     // We also need to modify the layout on the original weight array. The
+  //     // data conversion happens after the weight array is used.
+  //     weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_primitive_desc());
+  //   } else {
+  //     weight_mem = weight.GetMKLDNNData();
+  //     CHECK(weight_mem->get_primitive_desc() == fwd->fwd_pd.weights_primitive_desc());
+  //   }
+  // }
+
   const mkldnn::memory *weight_mem;
+  auto weight_tmp = mkldnn::memory(fwd->fwd_pd.weights_primitive_desc());
   if (ctx.is_train) {
     // TODO(zhengda) kvstore doesn't handle MKLDNN correctly. Let's reorder it
     // to the default format for now.
@@ -411,34 +459,65 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
     // For inference, we want to reorder the weight array so we don't need to
     // reorder data every time.
     if (weight.IsDefaultData()) {
-      weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
-                              param.conv_param.num_group);
-      // We also need to modify the layout on the original weight array. The
-      // data conversion happens after the weight array is used.
-      weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_primitive_desc());
+      if (fwd->fwd_pd.weights_primitive_desc().get_size() ==
+          GetArraySize(weight)) {
+        weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
+                                param.conv_param.num_group);
+        weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_primitive_desc());
+      } else {
+        weight_mem = GetWeights(weight, param.conv_param.num_group);
+        if (weight_mem == nullptr)
+          weight_mem =
+              weight.GetMKLDNNDataReorder(fwd->fwd_pd.weights_primitive_desc());
+        MKLDNNStream::Get()->RegisterPrim(
+            mkldnn::reorder(*weight_mem, weight_tmp));
+      }
     } else {
       weight_mem = weight.GetMKLDNNData();
       CHECK(weight_mem->get_primitive_desc() == fwd->fwd_pd.weights_primitive_desc());
     }
   }
-  mkldnn_output_t out_mem;
+
+  mkldnn_output_t out_mem, tmp_mem;
   if (param.mkldnn_param.with_sum) {
     out_mem = mkldnn_output_t(
         OutDataOp::Noop,
         const_cast<mkldnn::memory *>(out_data[conv::kOut].GetMKLDNNData()));
   } else {
-    out_mem = CreateMKLDNNMem(out_data[conv::kOut],
-                              fwd->fwd_pd.dst_primitive_desc(), req[conv::kOut]);
+    if (fwd->fwd_pd.dst_primitive_desc().get_size() != GetArraySize(out_data[conv::kOut])) {
+        auto tmp = TmpMemMgr::Get()->Alloc(fwd->fwd_pd.dst_primitive_desc());
+        out_mem = mkldnn_output_t(OutDataOp::CopyBack, tmp);
+      } else {
+        out_mem =
+            CreateMKLDNNMem(out_data[conv::kOut],
+                            fwd->fwd_pd.dst_primitive_desc(),
+                            req[conv::kOut]);
+      }
   }
-
   const mkldnn::memory *bias_mem = nullptr;
   if (!no_bias) {
     bias_mem = in_data[conv::kBias].GetMKLDNNData();
   }
-  fwd->SetNewMem(*data_mem, *weight_mem, bias_mem, *out_mem.second);
+  fwd->SetNewMem(data_tmp, weight_tmp, bias_mem, *out_mem.second);
   MKLDNNStream::Get()->RegisterPrim(fwd->GetFwd());
-
-  CommitOutput(out_data[conv::kOut], out_mem);
+  if (fwd->fwd_pd.dst_primitive_desc().get_size() != GetArraySize(out_data[conv::kOut])) {
+    auto type = get_mkldnn_type(out_data[conv::kOut].dtype());
+    const int N = 0, C = 1, H = 2, W = 3;
+    auto tz =
+        mkldnn::memory::dims{static_cast<int>(out_data[conv::kOut].shape()[N]),
+                             static_cast<int>(out_data[conv::kOut].shape()[C]),
+                             static_cast<int>(out_data[conv::kOut].shape()[H]),
+                             static_cast<int>(out_data[conv::kOut].shape()[W])};
+    auto format = static_cast<mkldnn::memory::format>(GetDefaultFormat(fwd->fwd_pd.dst_primitive_desc().desc()));
+    auto engine = CpuEngine::Get()->get_engine();
+    const auto md = mkldnn::memory::desc(tz, type, format);
+    const auto pd = mkldnn::memory::primitive_desc{md, engine};
+    tmp_mem = CreateMKLDNNMem(out_data[conv::kOut], pd, req[conv::kOut]);
+    MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*out_mem.second, *tmp_mem.second));
+    CommitOutput(out_data[conv::kOut], tmp_mem);
+  } else {
+    CommitOutput(out_data[conv::kOut], out_mem);
+  }
   MKLDNNStream::Get()->Submit();
 }
 
