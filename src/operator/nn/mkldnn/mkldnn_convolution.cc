@@ -498,7 +498,11 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
   if (!no_bias) {
     bias_mem = in_data[conv::kBias].GetMKLDNNData();
   }
-  fwd->SetNewMem(data_tmp, weight_tmp, bias_mem, *out_mem.second);
+  if (fwd->fwd_pd.src_primitive_desc().get_size() == GetArraySize(data)) {
+    fwd->SetNewMem(*data_mem, *weight_mem, bias_mem, *out_mem.second);
+  } else {
+    fwd->SetNewMem(data_tmp, weight_tmp, bias_mem, *out_mem.second);
+  }
   MKLDNNStream::Get()->RegisterPrim(fwd->GetFwd());
   if (fwd->fwd_pd.dst_primitive_desc().get_size() != GetArraySize(out_data[conv::kOut])) {
     auto type = get_mkldnn_type(out_data[conv::kOut].dtype());
