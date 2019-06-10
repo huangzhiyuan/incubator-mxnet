@@ -29,6 +29,7 @@
 #include "mkldnn_conv-inl.h"
 #include "../../nn/mkldnn/mkldnn_act-inl.h"
 #include "../../tensor/matrix_op-inl.h"
+#include "../../nn/euler/euler.hpp"
 
 namespace mxnet {
 namespace op {
@@ -168,6 +169,146 @@ static void ConvertWeightBias2MKLDNN(const MKLDNNConvFullParam &param,
   if (has_bias && data_scale) *bias = new_bias;
 }
 
+using namespace euler;
+
+static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
+                                           std::string conv_config) {
+  desc.data_type = {euler::f32, euler::f32, euler::f32, euler::f32};
+  desc.formats = {nchw, oihw, nChw16c};
+  // desc.formats = {nChw16c, OIhw16i16o, nChw16c};
+  desc.pads = {1, 1, 1, 1};
+  desc.strides = {1, 1};
+  desc.with_bias = 1;
+  desc.with_relu = 0;
+  desc.with_ip_sum = 0;
+  desc.f16c_opt = 1;
+  desc.algorithm = CONV_WINOGRAD;
+  desc.tile_size = 6;
+  desc.prop_kind = 1;
+  desc.nthreads = 0;
+  desc.execution_mode = 0xa061;
+  desc.flatting = {2, 14};
+  desc.blocking = {1, 2};
+  desc.partition = {1, 1};
+  desc.streaming_hint = {0, 0};
+  desc.format_as_blocked = {0, 0, 0};
+  desc.sampling_kind = euler::CALIBRATED;
+  desc.use_scratch_pad = false;
+  desc.disable_autoparam = 1;
+
+  switch (stoll(conv_config)) {
+    case 36410243:
+      // desc.algorithm = CONV_DIRECT;
+      // desc.formats = {nchw, hwio, nChw16c};
+      // desc.execution_mode = 0xa060;
+      // desc.flatting = {2, 14};
+      desc.blocking = {1, 2};
+      desc.flatting = {1, 28};
+      desc.dims = {1, 1, 3, 64, 1024, 1024, 1024, 1024, 3, 3};
+      break;
+    case 641285123:
+      desc.dims = {1, 1, 64, 128, 512, 512, 512, 512, 3, 3};
+      desc.blocking = {4, 2};
+      desc.partition = {1, 2};
+      break;
+    case 1282562563:
+      desc.dims = {1, 1, 128, 256, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {8, 1};
+      desc.partition = {1, 8};
+      break;
+    case 2562562563:
+      desc.dims = {1, 1, 256, 256, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {4, 1};
+      desc.partition = {1, 8};
+      break;
+    case 2565121283:
+      desc.dims = {1, 1, 256, 512, 128, 128, 128, 128, 3, 3};
+      desc.blocking = {8, 1};
+      desc.partition = {1, 8};
+      break;
+    case 5125121283:
+      desc.dims = {1, 1, 512, 512, 128, 128, 128, 128, 3, 3};
+      desc.blocking = {16, 1};
+      desc.partition = {1, 16};
+      break;
+    case 512512643:
+      desc.dims = {1, 1, 512, 512, 64, 64, 64, 64, 3, 3};
+      desc.blocking = {16, 1};
+      desc.partition = {1, 16};
+      break;
+    case 1024128641:
+      desc.algorithm = CONV_DIRECT_1X1;
+      desc.execution_mode = 0xc060;
+      desc.formats = {nChw16c, OIhw16i16o, nChw16c};
+      desc.dims = {1, 1, 1024, 128, 64, 64, 64, 64, 1, 1};
+      desc.blocking = {16, 1};
+      desc.partition = {1, 4};
+      desc.pads = {0, 0, 0, 0};
+      break;
+    case 128128643:
+      desc.dims = {1, 1, 128, 128, 64, 64, 64, 64, 3, 3};
+      desc.blocking = {8, 1};
+      desc.partition = {1, 4};
+      break;
+    case 384641281:
+      desc.algorithm = CONV_DIRECT_1X1;
+      desc.execution_mode = 0xc060;
+      desc.formats = {nChw16c, OIhw16i16o, nChw16c};
+      desc.dims = {1, 1, 384, 64, 128, 128, 128, 128, 1, 1};
+      desc.blocking = {8, 1};
+      desc.partition = {1, 2};
+      desc.pads = {0, 0, 0, 0};
+      break;
+    case 64641283:
+      desc.dims = {1, 1, 64, 64, 128, 128, 128, 128, 3, 3};
+      desc.blocking = {4, 1};
+      desc.partition = {1, 2};
+      break;
+    case 192642561:
+      desc.algorithm = CONV_DIRECT_1X1;
+      desc.execution_mode = 0xc060;
+      desc.formats = {nChw16c, OIhw16i16o, nChw16c};
+      desc.dims = {1, 1, 192, 64, 256, 256, 256, 256, 1, 1};
+      desc.blocking = {4, 1};
+      desc.partition = {1, 2};
+      desc.pads = {0, 0, 0, 0};
+      break;
+    case 64322563:
+      desc.dims = {1, 1, 64, 32, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {4, 1};
+      break;
+    case 32642563:
+      desc.dims = {1, 1, 32, 64, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {2, 1};
+      desc.partition = {1, 2};
+      break;
+    case 32322563:
+      desc.dims = {1, 1, 32, 32, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {2, 1};
+      break;
+    case 3222563:
+      desc.dims = {1, 1, 32, 2, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {2, 1};
+      desc.flatting = {1, 28};
+      break;
+    case 32162563:
+      desc.dims = {1, 1, 32, 16, 256, 256, 256, 256, 3, 3};
+      desc.blocking = {2, 1};
+      desc.flatting = {1, 20};
+      break;
+  }
+  return desc;
+}
+
+static inline void conv_execute(eld_conv_t &conv, void *input, void *weights,
+                                void *output, void *bias) {
+  void *_weights = weights, *_bias = bias, *_input = input, *_output = output;
+
+  if (ELX_OK != elx_conv(conv, _output, _input, _weights, _bias)) {
+    LOG(FATAL) << "Fail: Euler Convolution execution error!";
+  }
+}
+
 class SgMKLDNNConvOperator {
  public:
   explicit SgMKLDNNConvOperator(const nnvm::NodeAttrs &attrs)
@@ -198,6 +339,7 @@ class SgMKLDNNConvOperator {
   size_t bias_ver_;
   float data_scale_{0.0f};
   std::vector<float> weight_scales_;
+  eld_conv_t cache_eld_conv_;
 };
 
 void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
@@ -237,6 +379,15 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
   bool has_bias = mkldnn_param.with_bn || !conv_param.no_bias;
   NDArray data = inputs[in_data];
   NDArray output = mkldnn_param.with_sum ? inputs[in_sum] : outputs[kOut];
+
+  index_t IC = data.shape()[1];
+  index_t OC = inputs[in_weight].shape()[0];
+  index_t OH = data.shape()[2];
+  index_t KH = conv_param.kernel[0];
+  std::string conv_config = std::to_string(IC) + std::to_string(OC) +
+                            std::to_string(OH) + std::to_string(KH);
+  bool euler_used = false;
+  if (OC % 16 == 0) euler_used = true;
 
   // Copy inputs[in_sum] into outputs[kOut] in case inplace optimization failed.
   if (mkldnn_param.with_sum) {
@@ -388,14 +539,23 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
         CHECK(full_conv_param.postsum_act_param.alg == mkldnn::algorithm::eltwise_relu);
       }
     }
-    fwd_.reset(new MKLDNNConvForward(
-        full_conv_param, ctx.is_train, data, cached_weight_,
-        has_bias ? &cached_bias_ : nullptr, output));
-    ConvertWeightBias2MKLDNN(full_conv_param, fwd_->fwd_pd, &cached_weight_, &cached_bias_,
-                             has_bias, data_scale_, weight_scales_);
-    fwd_->SetNewMem(*data.GetMKLDNNData(), *cached_weight_.GetMKLDNNData(),
-                    has_bias ? cached_bias_.GetMKLDNNData() : nullptr,
-                    *output.GetMKLDNNData());
+
+    if (euler_used) {
+      create_conv_desc(cache_eld_conv_, conv_config);
+      if (cache_eld_conv_.setup() != ELD_OK) {
+        LOG(FATAL) << "Fail: Euler Convolution setup error!";
+      }
+    } else {
+      fwd_.reset(new MKLDNNConvForward(
+          full_conv_param, ctx.is_train, data, cached_weight_,
+          has_bias ? &cached_bias_ : nullptr, output));
+      ConvertWeightBias2MKLDNN(full_conv_param, fwd_->fwd_pd, &cached_weight_,
+                               &cached_bias_, has_bias, data_scale_,
+                               weight_scales_);
+      fwd_->SetNewMem(*data.GetMKLDNNData(), *cached_weight_.GetMKLDNNData(),
+                      has_bias ? cached_bias_.GetMKLDNNData() : nullptr,
+                      *output.GetMKLDNNData());
+    }
     initialized_ = true;
   }
 
@@ -425,17 +585,47 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
     MKLDNNStream::Get()->RegisterPrim(fwd_->GetFwd());
     MKLDNNStream::Get()->Submit();
   } else {
-    std::vector<NDArray> new_inputs;
-    std::vector<OpReqType> new_req;
-    if (has_bias) {
-      new_inputs = {data, cached_weight_, cached_bias_};
-      new_req = {req[in_data], req[in_weight], req[in_bias]};
+    if (euler_used) {
+      void *input, *weight, *output, *bias;
+      if (data.IsMKLDNNData()) {
+        input = data.GetMKLDNNData()->get_data_handle();
+      } else {
+        input = (float *)data.data().dptr<float>();
+      }
+
+      // auto mem_desc =
+      //     cached_weight_.GetMKLDNNData()->get_primitive_desc().desc();
+      // LOG(INFO) << "weight data format: " << mem_desc.data.format;
+      // auto this_dtype =
+      //     static_cast<mkldnn::memory::data_type>(cached_weight_.dtype());
+      // mkldnn::memory::desc data_md(
+      //     mkldnn::memory::dims(mem_desc.data.dims,
+      //                          mem_desc.data.dims + mem_desc.data.ndims),
+      //     this_dtype, mkldnn::memory::format::OIhw16i16o);
+      // mkldnn::memory::primitive_desc pd(data_md,
+      //                                   CpuEngine::Get()->get_engine());
+      // auto cached_weight_mem =  cached_weight_.GetMKLDNNDataReorder(pd);
+      // weight = cached_weight_mem->get_data_handle();
+
+      weight = (float *)cached_weight_.data().dptr<float>();
+      bias = (float *)cached_bias_.data().dptr<float>();
+      output = (float *)outputs[kOut].data().dptr<float>();
+      conv_execute(cache_eld_conv_, input, weight, output, bias);
+      auto out = const_cast<NDArray &>(outputs[kOut]);
+      out.UpdateMKLDNNMemDesc(mkldnn::memory::format::nChw16c);
     } else {
-      new_inputs = {data, cached_weight_};
-      new_req = {req[in_data], req[in_weight]};
+      std::vector<NDArray> new_inputs;
+      std::vector<OpReqType> new_req;
+      if (has_bias) {
+        new_inputs = {data, cached_weight_, cached_bias_};
+        new_req = {req[in_data], req[in_weight], req[in_bias]};
+      } else {
+        new_inputs = {data, cached_weight_};
+        new_req = {req[in_data], req[in_weight]};
+      }
+      MKLDNNConvolutionForwardFullFeature(full_conv_param, ctx, fwd_.get(),
+                                          new_inputs, new_req, {output});
     }
-    MKLDNNConvolutionForwardFullFeature(full_conv_param, ctx, fwd_.get(), new_inputs, new_req,
-                                        {output});
   }
 
   if (mkldnn_param.quantized) {

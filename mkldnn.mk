@@ -30,6 +30,7 @@ else
 	MKLDNN_LIBFILE = $(MKLDNNROOT)/lib/libmkldnn.so.0
 	MKLDNN_LIB64FILE = $(MKLDNNROOT)/lib64/libmkldnn.so.0
 endif
+EULER_LIBFILE = $(ROOTDIR)/3rdparty/libel.so
 endif
 
 .PHONY: mkldnn mkldnn_clean
@@ -49,6 +50,7 @@ $(MKLDNN_LIBFILE):
 	cp $(OMP_LIBFILE) $(MXNET_LIBDIR)
 	cp $(MKLML_LIBFILE) $(MXNET_LIBDIR)
 	cp $(MKLDNN_LIBFILE) $(MXNET_LIBDIR)
+	cp $(EULER_LIBFILE) $(MXNET_LIBDIR)
 
 mkldnn_clean:
 	$(RM) -r 3rdparty/mkldnn/build
