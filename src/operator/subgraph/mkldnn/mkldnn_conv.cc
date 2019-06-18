@@ -199,11 +199,11 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
   switch (stoll(conv_config)) {
     case 36410243:
       // desc.algorithm = CONV_DIRECT;
-      // desc.formats = {nchw, hwio, nChw16c};
+      desc.formats = {nchw, oihw, nChw16c};
       // desc.execution_mode = 0xa060;
-      // desc.flatting = {2, 14};
-      desc.blocking = {1, 2};
-      desc.flatting = {1, 28};
+      desc.flatting = {2, 14};
+      // desc.blocking = {1, 2};
+      // desc.flatting = {1, 28};
       desc.dims = {1, 1, 3, 64, 1024, 1024, 1024, 1024, 3, 3};
       break;
     case 641285123:
@@ -223,7 +223,7 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       break;
     case 2565121283:
       desc.dims = {1, 1, 256, 512, 128, 128, 128, 128, 3, 3};
-      desc.blocking = {8, 1};
+      desc.blocking = {16, 1};
       desc.partition = {1, 8};
       break;
     case 5125121283:
@@ -340,6 +340,7 @@ class SgMKLDNNConvOperator {
   float data_scale_{0.0f};
   std::vector<float> weight_scales_;
   eld_conv_t cache_eld_conv_;
+  void *eld_input_, *eld_weight_, *eld_output_, *eld_bias_;
 };
 
 void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
@@ -545,6 +546,29 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
       if (cache_eld_conv_.setup() != ELD_OK) {
         LOG(FATAL) << "Fail: Euler Convolution setup error!";
       }
+      if (data.IsMKLDNNData()) {
+        eld_input_ = data.GetMKLDNNData()->get_data_handle();
+      } else {
+        eld_input_ = (float *)data.data().dptr<float>();
+      }
+      // auto mem_desc =
+      //     cached_weight_.GetMKLDNNData()->get_primitive_desc().desc();
+      // LOG(INFO) << "weight data format: " << mem_desc.data.format;
+      // auto this_dtype =
+      //     static_cast<mkldnn::memory::data_type>(cached_weight_.dtype());
+      // mkldnn::memory::desc data_md(
+      //     mkldnn::memory::dims(mem_desc.data.dims,
+      //                          mem_desc.data.dims + mem_desc.data.ndims),
+      //     this_dtype, mkldnn::memory::format::OIhw16i16o);
+      // mkldnn::memory::primitive_desc pd(data_md,
+      //                                   CpuEngine::Get()->get_engine());
+      // auto cached_weight_mem =  cached_weight_.GetMKLDNNDataReorder(pd);
+      // eld_weight_ = cached_weight_mem->get_data_handle();
+
+
+      eld_weight_ = (float *)cached_weight_.data().dptr<float>();
+      eld_bias_ = (float *)cached_bias_.data().dptr<float>();
+      eld_output_ = (float *)outputs[kOut].data().dptr<float>();
     } else {
       fwd_.reset(new MKLDNNConvForward(
           full_conv_param, ctx.is_train, data, cached_weight_,
@@ -586,31 +610,7 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
     MKLDNNStream::Get()->Submit();
   } else {
     if (euler_used) {
-      void *input, *weight, *output, *bias;
-      if (data.IsMKLDNNData()) {
-        input = data.GetMKLDNNData()->get_data_handle();
-      } else {
-        input = (float *)data.data().dptr<float>();
-      }
-
-      // auto mem_desc =
-      //     cached_weight_.GetMKLDNNData()->get_primitive_desc().desc();
-      // LOG(INFO) << "weight data format: " << mem_desc.data.format;
-      // auto this_dtype =
-      //     static_cast<mkldnn::memory::data_type>(cached_weight_.dtype());
-      // mkldnn::memory::desc data_md(
-      //     mkldnn::memory::dims(mem_desc.data.dims,
-      //                          mem_desc.data.dims + mem_desc.data.ndims),
-      //     this_dtype, mkldnn::memory::format::OIhw16i16o);
-      // mkldnn::memory::primitive_desc pd(data_md,
-      //                                   CpuEngine::Get()->get_engine());
-      // auto cached_weight_mem =  cached_weight_.GetMKLDNNDataReorder(pd);
-      // weight = cached_weight_mem->get_data_handle();
-
-      weight = (float *)cached_weight_.data().dptr<float>();
-      bias = (float *)cached_bias_.data().dptr<float>();
-      output = (float *)outputs[kOut].data().dptr<float>();
-      conv_execute(cache_eld_conv_, input, weight, output, bias);
+      conv_execute(cache_eld_conv_, eld_input_, eld_weight_, eld_output_, eld_bias_);
       auto out = const_cast<NDArray &>(outputs[kOut]);
       out.UpdateMKLDNNMemDesc(mkldnn::memory::format::nChw16c);
     } else {
