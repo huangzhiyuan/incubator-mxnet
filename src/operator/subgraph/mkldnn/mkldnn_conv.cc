@@ -202,7 +202,7 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       desc.formats = {nchw, oihw, nChw16c};
       // desc.execution_mode = 0xa060;
       desc.flatting = {2, 14};
-      // desc.blocking = {1, 2};
+      desc.blocking = {1, 2};
       // desc.flatting = {1, 28};
       desc.dims = {1, 1, 3, 64, 1024, 1024, 1024, 1024, 3, 3};
       break;
@@ -223,13 +223,13 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       break;
     case 2565121283:
       desc.dims = {1, 1, 256, 512, 128, 128, 128, 128, 3, 3};
-      desc.blocking = {16, 1};
+      desc.blocking = {16, 2};
       desc.partition = {1, 8};
       break;
     case 5125121283:
       desc.dims = {1, 1, 512, 512, 128, 128, 128, 128, 3, 3};
-      desc.blocking = {16, 1};
-      desc.partition = {1, 16};
+      desc.blocking = {16, 2};
+      desc.partition = {1, 8};
       break;
     case 512512643:
       desc.dims = {1, 1, 512, 512, 64, 64, 64, 64, 3, 3};
