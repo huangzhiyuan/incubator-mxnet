@@ -174,8 +174,8 @@ using namespace euler;
 static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
                                            std::string conv_config) {
   desc.data_type = {euler::f32, euler::f32, euler::f32, euler::f32};
-  desc.formats = {nchw, oihw, nChw16c};
-  // desc.formats = {nChw16c, OIhw16i16o, nChw16c};
+  // desc.formats = {nchw, oihw, nChw16c};
+  desc.formats = {nChw16c, OIhw16i16o, nChw16c};
   desc.pads = {1, 1, 1, 1};
   desc.strides = {1, 1};
   desc.with_bias = 1;
