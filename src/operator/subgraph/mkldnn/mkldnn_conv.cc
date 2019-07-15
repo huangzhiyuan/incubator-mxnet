@@ -172,7 +172,7 @@ static void ConvertWeightBias2MKLDNN(const MKLDNNConvFullParam &param,
 using namespace euler;
 
 static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
-                                           std::string conv_config) {
+                                           std::string conv_config, const int batchsize) {
   desc.data_type = {euler::f32, euler::f32, euler::f32, euler::f32};
   // desc.formats = {nchw, oihw, nChw16c};
   desc.formats = {nChw16c, OIhw16i16o, nChw16c};
@@ -204,35 +204,35 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       desc.flatting = {2, 14};
       desc.blocking = {1, 2};
       // desc.flatting = {1, 28};
-      desc.dims = {1, 1, 3, 64, 1024, 1024, 1024, 1024, 3, 3};
+      desc.dims = {batchsize, 1, 3, 64, 1024, 1024, 1024, 1024, 3, 3};
       break;
     case 641285123:
-      desc.dims = {1, 1, 64, 128, 512, 512, 512, 512, 3, 3};
+      desc.dims = {batchsize, 1, 64, 128, 512, 512, 512, 512, 3, 3};
       desc.blocking = {4, 2};
       desc.partition = {1, 2};
       break;
     case 1282562563:
-      desc.dims = {1, 1, 128, 256, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 128, 256, 256, 256, 256, 256, 3, 3};
       desc.blocking = {8, 1};
       desc.partition = {1, 8};
       break;
     case 2562562563:
-      desc.dims = {1, 1, 256, 256, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 256, 256, 256, 256, 256, 256, 3, 3};
       desc.blocking = {4, 1};
       desc.partition = {1, 8};
       break;
     case 2565121283:
-      desc.dims = {1, 1, 256, 512, 128, 128, 128, 128, 3, 3};
+      desc.dims = {batchsize, 1, 256, 512, 128, 128, 128, 128, 3, 3};
       desc.blocking = {16, 2};
       desc.partition = {1, 8};
       break;
     case 5125121283:
-      desc.dims = {1, 1, 512, 512, 128, 128, 128, 128, 3, 3};
+      desc.dims = {batchsize, 1, 512, 512, 128, 128, 128, 128, 3, 3};
       desc.blocking = {16, 2};
       desc.partition = {1, 8};
       break;
     case 512512643:
-      desc.dims = {1, 1, 512, 512, 64, 64, 64, 64, 3, 3};
+      desc.dims = {batchsize, 1, 512, 512, 64, 64, 64, 64, 3, 3};
       desc.blocking = {16, 1};
       desc.partition = {1, 16};
       break;
@@ -240,13 +240,13 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       desc.algorithm = CONV_DIRECT_1X1;
       desc.execution_mode = 0xc060;
       desc.formats = {nChw16c, OIhw16i16o, nChw16c};
-      desc.dims = {1, 1, 1024, 128, 64, 64, 64, 64, 1, 1};
+      desc.dims = {batchsize, 1, 1024, 128, 64, 64, 64, 64, 1, 1};
       desc.blocking = {16, 1};
       desc.partition = {1, 4};
       desc.pads = {0, 0, 0, 0};
       break;
     case 128128643:
-      desc.dims = {1, 1, 128, 128, 64, 64, 64, 64, 3, 3};
+      desc.dims = {batchsize, 1, 128, 128, 64, 64, 64, 64, 3, 3};
       desc.blocking = {8, 1};
       desc.partition = {1, 4};
       break;
@@ -254,13 +254,13 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       desc.algorithm = CONV_DIRECT_1X1;
       desc.execution_mode = 0xc060;
       desc.formats = {nChw16c, OIhw16i16o, nChw16c};
-      desc.dims = {1, 1, 384, 64, 128, 128, 128, 128, 1, 1};
+      desc.dims = {batchsize, 1, 384, 64, 128, 128, 128, 128, 1, 1};
       desc.blocking = {8, 1};
       desc.partition = {1, 2};
       desc.pads = {0, 0, 0, 0};
       break;
     case 64641283:
-      desc.dims = {1, 1, 64, 64, 128, 128, 128, 128, 3, 3};
+      desc.dims = {batchsize, 1, 64, 64, 128, 128, 128, 128, 3, 3};
       desc.blocking = {4, 1};
       desc.partition = {1, 2};
       break;
@@ -268,31 +268,31 @@ static inline eld_conv_t &create_conv_desc(eld_conv_t &desc,
       desc.algorithm = CONV_DIRECT_1X1;
       desc.execution_mode = 0xc060;
       desc.formats = {nChw16c, OIhw16i16o, nChw16c};
-      desc.dims = {1, 1, 192, 64, 256, 256, 256, 256, 1, 1};
+      desc.dims = {batchsize, 1, 192, 64, 256, 256, 256, 256, 1, 1};
       desc.blocking = {4, 1};
       desc.partition = {1, 2};
       desc.pads = {0, 0, 0, 0};
       break;
     case 64322563:
-      desc.dims = {1, 1, 64, 32, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 64, 32, 256, 256, 256, 256, 3, 3};
       desc.blocking = {4, 1};
       break;
     case 32642563:
-      desc.dims = {1, 1, 32, 64, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 32, 64, 256, 256, 256, 256, 3, 3};
       desc.blocking = {2, 1};
       desc.partition = {1, 2};
       break;
     case 32322563:
-      desc.dims = {1, 1, 32, 32, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 32, 32, 256, 256, 256, 256, 3, 3};
       desc.blocking = {2, 1};
       break;
     case 3222563:
-      desc.dims = {1, 1, 32, 2, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 32, 2, 256, 256, 256, 256, 3, 3};
       desc.blocking = {2, 1};
       desc.flatting = {1, 28};
       break;
     case 32162563:
-      desc.dims = {1, 1, 32, 16, 256, 256, 256, 256, 3, 3};
+      desc.dims = {batchsize, 1, 32, 16, 256, 256, 256, 256, 3, 3};
       desc.blocking = {2, 1};
       desc.flatting = {1, 20};
       break;
@@ -542,7 +542,7 @@ void SgMKLDNNConvOperator::Forward(const OpContext &ctx,
     }
 
     if (euler_used) {
-      create_conv_desc(cache_eld_conv_, conv_config);
+      create_conv_desc(cache_eld_conv_, conv_config, data.shape()[0]);
       if (cache_eld_conv_.setup() != ELD_OK) {
         LOG(FATAL) << "Fail: Euler Convolution setup error!";
       }
